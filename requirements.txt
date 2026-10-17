@@ -1,0 +1,13 @@
+fastapi>=0.110
+uvicorn[standard]>=0.27
+python-multipart
+pillow
+exifread
+httpx
+aiofiles
+numpy
+# Optional heavy deps (install later if needed):
+# easyocr
+# opencv-python-headless
+# torch
+# transformers

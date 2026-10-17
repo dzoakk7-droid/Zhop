@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Результат — GeoSleuth Web</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    body { font-family: 'Segoe UI', system-ui, sans-serif; }
+    #map { height: 380px; border-radius: 12px; }
+  </style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+  <div class="max-w-4xl mx-auto px-4 py-8">
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-6">
+      <div>
+        <a href="/" class="text-sm text-blue-600 hover:underline">← Новое фото</a>
+        <h1 class="text-2xl font-bold text-slate-800 mt-1">Результат анализа</h1>
+      </div>
+      <div id="status-badge" class="px-3 py-1 rounded-full text-sm font-medium
+           {% if job.status == 'done' %}bg-green-100 text-green-800
+           {% elif job.status == 'error' %}bg-red-100 text-red-800
+           {% else %}bg-yellow-100 text-yellow-800{% endif %}">
+        {{ job.status }}
+      </div>
+    </div>
+
+    {% if job.status == 'error' %}
+    <div class="bg-red-50 border border-red-200 rounded-xl p-5 text-red-800">
+      <strong>Ошибка:</strong> {{ job.error }}
+    </div>
+    {% elif job.status != 'done' %}
+    <div class="bg-yellow-50 border border-yellow-200 rounded-xl p-5">
+      Анализ ещё выполняется... <a href="javascript:location.reload()" class="underline">Обновить</a>
+    </div>
+    {% else %}
+    <!-- Main content -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <!-- Photo -->
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <img src="{{ job.result.image_url }}" alt="Uploaded photo" class="w-full object-contain max-h-96 bg-slate-100" />
+        <div class="p-4 text-sm text-slate-500">
+          {{ job.original_name }}
+        </div>
+      </div>
+
+      <!-- Summary -->
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+        <h2 class="font-semibold text-slate-800 mb-3">Краткий итог</h2>
+        <pre class="text-sm text-slate-700 whitespace-pre-wrap font-sans leading-relaxed">{{ job.result.summary }}</pre>
+      </div>
+    </div>
+
+    <!-- Map (if GPS) -->
+    {% if job.result.exif.gps and job.result.exif.gps.lat %}
+    <div class="mt-6 bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+      <h2 class="font-semibold text-slate-800 mb-3">📍 Карта</h2>
+      <div id="map"></div>
+      <p class="text-sm text-slate-500 mt-2">
+        Координаты: {{ '%.6f'|format(job.result.exif.gps.lat) }}, {{ '%.6f'|format(job.result.exif.gps.lon) }}
+        {% if job.result.exif.gps.altitude %}
+        · Высота: {{ job.result.exif.gps.altitude }} м
+        {% endif %}
+      </p>
+    </div>
+    {% endif %}
+
+    <!-- Steps -->
+    <div class="mt-6 bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+      <h2 class="font-semibold text-slate-800 mb-4">Шаги анализа</h2>
+      <div class="space-y-3">
+        {% for step in job.steps %}
+        <div class="flex items-start gap-3 text-sm">
+          <div class="mt-0.5">
+            {% if step.status == 'done' %}
+            <span class="text-green-500">✓</span>
+            {% elif step.status == 'error' %}
+            <span class="text-red-500">✗</span>
+            {% elif step.status == 'skipped' %}
+            <span class="text-slate-400">–</span>
+            {% else %}
+            <span class="text-yellow-500">…</span>
+            {% endif %}
+          </div>
+          <div>
+            <div class="font-medium text-slate-700">{{ step.name }}</div>
+            <div class="text-slate-500">{{ step.message }}</div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- EXIF details -->
+    {% if job.result.exif %}
+    <div class="mt-6 bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+      <h2 class="font-semibold text-slate-800 mb-3">EXIF / Метаданные</h2>
+      <dl class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-sm">
+        {% if job.result.exif.datetime %}
+        <div><dt class="text-slate-400">Дата съёмки</dt><dd class="font-medium">{{ job.result.exif.datetime }}</dd></div>
+        {% endif %}
+        {% if job.result.exif.camera %}
+        <div><dt class="text-slate-400">Камера</dt><dd class="font-medium">{{ job.result.exif.camera }}</dd></div>
+        {% endif %}
+        {% if job.result.exif.focal_length %}
+        <div><dt class="text-slate-400">Фокусное расстояние</dt><dd class="font-medium">{{ job.result.exif.focal_length }}</dd></div>
+        {% endif %}
+        {% if job.result.image_info %}
+        <div><dt class="text-slate-400">Размер</dt>
+          <dd class="font-medium">{{ job.result.image_info.width }} × {{ job.result.image_info.height }}
+            {% if job.result.processed and job.result.processed.features and job.result.processed.features.megapixels %}
+            ({{ job.result.processed.features.megapixels }} Мп)
+            {% endif %}
+          </dd>
+        </div>
+        {% endif %}
+      </dl>
+    </div>
+    {% endif %}
+
+    <!-- OSM places -->
+    {% if job.result.osm and job.result.osm.places %}
+    <div class="mt-6 bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+      <h2 class="font-semibold text-slate-800 mb-3">🗺️ Ближайшие объекты (OSM)</h2>
+      <ul class="divide-y divide-slate-100 text-sm">
+        {% for p in job.result.osm.places[:12] %}
+        <li class="py-2 flex justify-between gap-4">
+          <span class="font-medium text-slate-700">{{ p.name or p.tags.get('amenity') or p.tags.get('tourism') or 'без названия' }}</span>
+          <span class="text-slate-400 text-xs">
+            {% for k,v in p.tags.items() if k != 'name' %}{{ k }}:{{ v }} {% endfor %}
+          </span>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+
+    <!-- Limitations -->
+    <div class="mt-8 text-sm text-slate-500 bg-slate-100 rounded-xl p-4">
+      <p class="font-medium text-slate-600 mb-1">Ограничения этой веб-версии</p>
+      <ul class="list-disc list-inside space-y-1">
+        <li>Нет полноценного reverse image search (Baidu / Yandex через браузер)</li>
+        <li>Нет skyline matching и elevation analysis</li>
+        <li>Нет CLIP / DINOv2 ранжирования спутниковых и street-view снимков</li>
+        <li>Нет геометрического анализа (пирсы, тени, bearings)</li>
+      </ul>
+      <p class="mt-2">Для максимальной точности используйте оригинальный
+        <a href="https://github.com/Oldcircle/geo-sleuth" class="underline" target="_blank">geo-sleuth</a>
+        локально с Claude Code / Cursor / Codex.
+      </p>
+    </div>
+    {% endif %}
+  </div>
+
+  {% if job.status == 'done' and job.result.exif.gps and job.result.exif.gps.lat %}
+  <script>
+    const lat = {{ job.result.exif.gps.lat }};
+    const lon = {{ job.result.exif.gps.lon }};
+    const map = L.map('map').setView([lat, lon], 16);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap'
+    }).addTo(map);
+    L.marker([lat, lon]).addTo(map)
+      .bindPopup('Позиция из EXIF').openPopup();
+
+    // Add nearby OSM points if available
+    {% if job.result.osm and job.result.osm.places %}
+    const places = {{ job.result.osm.places | tojson }};
+    places.forEach(p => {
+      if (p.lat && p.lon) {
+        L.circleMarker([p.lat, p.lon], {
+          radius: 5,
+          color: '#3b82f6',
+          fillOpacity: 0.7
+        }).addTo(map).bindPopup(p.name || 'объект');
+      }
+    });
+    {% endif %}
+  </script>
+  {% endif %}
+</body>
+</html>
